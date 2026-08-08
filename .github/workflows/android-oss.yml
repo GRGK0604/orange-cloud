@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       oauth_client_id:
-        description: "可选：注入自建 OAUTH_CLIENT_ID（默认空，与本地 oss 风味一致）"
+        description: "可选：覆盖 OAUTH_CLIENT_ID（默认注入官方 Client ID）"
         required: false
         type: string
 
@@ -66,14 +66,18 @@ jobs:
           sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
       - name: Write local.properties
+        env:
+          # 默认注入官方 PKCE Client ID（源码 play 风味同值）；手动运行 / Secrets 可覆盖
+          INPUT_OAUTH_CLIENT_ID: ${{ inputs.oauth_client_id }}
+          SECRET_OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          DEFAULT_OAUTH_CLIENT_ID: 102240eb9095a1965ee11813ef4788cd
         run: |
+          oauth_id="${INPUT_OAUTH_CLIENT_ID:-}"
+          if [ -z "$oauth_id" ]; then oauth_id="${SECRET_OAUTH_CLIENT_ID:-}"; fi
+          if [ -z "$oauth_id" ]; then oauth_id="$DEFAULT_OAUTH_CLIENT_ID"; fi
           {
             echo "sdk.dir=$ANDROID_HOME"
-            if [ -n "${{ inputs.oauth_client_id }}" ]; then
-              echo "OAUTH_CLIENT_ID=${{ inputs.oauth_client_id }}"
-            elif [ -n "${{ secrets.OAUTH_CLIENT_ID }}" ]; then
-              echo "OAUTH_CLIENT_ID=${{ secrets.OAUTH_CLIENT_ID }}"
-            fi
+            echo "OAUTH_CLIENT_ID=$oauth_id"
           } > local.properties
 
       # 去掉 Daemon JVM 自动下载约束，改用上面 setup-java 的 JAVA_HOME。
@@ -136,6 +140,6 @@ jobs:
             - 无 Play Billing；Pro 全解锁
             - 未配置仓库签名密钥时为未签名包（安装前需自行签名，或开启「允许未知来源」后视 ROM 策略安装）
 
-            自行注入 OAuth：在仓库 Secrets 设置 `OAUTH_CLIENT_ID`，或手动运行本 workflow 时填写输入项。
+            默认已注入官方 OAuth Client ID；可用 Secrets / 手动运行输入覆盖。
           files: ${{ steps.apk.outputs.path }}
           generate_release_notes: true
